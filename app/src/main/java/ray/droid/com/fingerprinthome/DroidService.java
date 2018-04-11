@@ -1,7 +1,10 @@
 package ray.droid.com.fingerprinthome;
 
+import android.app.ActivityManager;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.util.Log;
@@ -35,6 +38,7 @@ public class DroidService extends Service implements Handler.Callback {
     private SpassFingerprint.IdentifyListener mIdentifyListener = new SpassFingerprint.IdentifyListener() {
         @Override
         public void onFinished(int eventStatus) {
+            Log.i(LOG_TAG, "onFinished");
             onReadyIdentify = false;
             mHandler.sendEmptyMessageDelayed(MSG_AUTH, 100);
         }
@@ -124,13 +128,13 @@ public class DroidService extends Service implements Handler.Callback {
             mSpass.initialize(DroidService.this);
         } catch (SsdkUnsupportedException e) {
             Log.i(LOG_TAG, "Exception: " + e);
-            Toast.makeText(mContext, "Fingerprint Service is not supported on this device.",
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(mContext, "Biblioteca usada no Fingerprint Home não é suportado para o seu dispositivo.",
+                    Toast.LENGTH_LONG).show();
             stopSelf();
             return START_NOT_STICKY;
         } catch (UnsupportedOperationException e) {
-            Log.i(LOG_TAG, "Fingerprint Service is not supported in the device");
-            Toast.makeText(mContext, "Fingerprint Service is not supported on this device.",
+            Log.i(LOG_TAG, "Fingerprint Home não é suportado para o seu dispositivo.");
+            Toast.makeText(mContext, "Fingerprint Home não é suportado para o seu dispositivo.",
                     Toast.LENGTH_SHORT).show();
             stopSelf();
             return START_NOT_STICKY;
@@ -139,15 +143,16 @@ public class DroidService extends Service implements Handler.Callback {
 
         if (isFeatureEnabled_fingerprint) {
             mSpassFingerprint = new SpassFingerprint(DroidService.this);
-            Log.i(LOG_TAG, "Fingerprint Service is supported in the device.");
             Log.i(LOG_TAG, "SDK version : " + mSpass.getVersionName());
         } else {
-            Log.i(LOG_TAG, "Fingerprint Service is not supported in the device.");
-            Toast.makeText(mContext, "Fingerprint Service is not supported on this device.",
+            Log.i(LOG_TAG, "Fingerprint Home não é suportado para o seu dispositivo.");
+            Toast.makeText(mContext, "Fingerprint Home não é suportado para o seu dispositivo.",
                     Toast.LENGTH_SHORT).show();
             stopSelf();
             return START_NOT_STICKY;
         }
+
+        registerBroadcastReceiver();
 
         isServiceEnabled = true;
 
@@ -161,6 +166,7 @@ public class DroidService extends Service implements Handler.Callback {
     public void onDestroy() {
         super.onDestroy();
         Log.i(LOG_TAG, "In onDestroy");
+        unregisterBroadcastReceiver();
         isServiceEnabled = false;
 
 
@@ -170,5 +176,34 @@ public class DroidService extends Service implements Handler.Callback {
     public IBinder onBind(Intent intent) {
         // Used only in case of bound services.
         return null;
+    }
+
+    private BroadcastReceiver mPassReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final String action = intent.getAction();
+            if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                mHandler.sendEmptyMessageDelayed(MSG_AUTH, 100);
+            } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                mHandler.sendEmptyMessageDelayed(MSG_CANCEL, 100);
+            }
+        }
+    };
+
+    private void registerBroadcastReceiver() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        mContext.registerReceiver(mPassReceiver, filter);
+    }
+
+    private void unregisterBroadcastReceiver() {
+        try {
+            if (mContext != null) {
+                mContext.unregisterReceiver(mPassReceiver);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
